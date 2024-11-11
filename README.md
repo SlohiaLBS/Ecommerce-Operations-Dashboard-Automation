@@ -6,7 +6,7 @@ In this project I have automated my business flow. 3 major flows I have automate
 2. MRP and Label Automation
 3. Entry Reconciler for better Stock and Data Management
 
-   1. Orders Fetching-
+   1. Orders Fetching- (For references I have used https://developer-docs.amazon.com/sp-api/docs/orders-api-v0-reference API Documentation)
       Set Script Properties: Stores API credentials (refresh token, client ID, client secret) for Amazon SP-API authentication.
 
       Authentication: Uses the getAccessToken function to fetch an access_token via OAuth2, enabling API requests.
