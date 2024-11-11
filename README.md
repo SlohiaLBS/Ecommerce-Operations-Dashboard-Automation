@@ -53,30 +53,23 @@ In this project I have automated my business flow. 3 major flows I have automate
       Restores the original background color of LABELS TAG DATA (A1:I1 to white).
 
    3. Entry Reconciler for better Stock and Data Management (I couldn’t include this in the video due to time constraints, but it was a challenging task that I’m proud of, so I wanted to share it here for consideration.)
-      Initialize Sheets and Set Background:
+      Define SQL Queries:
       
-      Retrieves two sheets: LABELS TAG DATA (originsht) and Please Read Automation & Backend (sheet).
-      Temporarily changes the background of A1:I1 in LABELS TAG DATA to red for visual indication.
-      Check for Previous File:
+      Query 1: Fetches and aggregates data related to dispatched and returned orders.
+      Query 2: Aggregates data related to completed and repaired production items.
+      Run Queries:
       
-      Checks if K1 in the backend sheet is set to "SUCCESS".
-      If true, deletes the previously created file (ID from cell J1) by marking it as trashed.
-      Retrieve PDF IDs:
+      The runBigQuery function executes both queries using the runAndPasteQueryResults function.
+      BigQuery Job Execution:
       
-      Reads a count (H1) to determine how many PDF files to merge.
-      Retrieves file IDs from column G (rows 2 onward) and stores them in an array (ids).
-      Fetch and Merge PDF Files:
+      Submits each query as a BigQuery job.
+      Polls for job completion with a 10-second sleep interval until the query execution finishes.
+      Retrieve Results:
       
-      Uses the PDF-lib library (via CDN) to handle PDF merging.
-      Loads and merges all specified PDFs into a single PDF document:
-      For each PDF ID, it loads the file as binary data.
-      Copies all pages from the individual PDFs into a new PDF document (pdfDoc).
-      Save the Merged PDF:
+      Fetches query results, including schema (column headers) and data rows.
+      Write Results to Google Sheets:
       
-      Saves the merged PDF file as a new file in Google Drive with the name from cell L3.
-      Gets the file’s URL and writes it to cell I1 in the backend sheet, along with the filename in I2.
-      Update and Share:
-      
-      Marks the process as "SUCCESS" in cell K1.
-      Shares the newly created file with edit permissions for anyone.
-      Restores the original background color of LABELS TAG DATA (A1:I1 to white).
+      Writes the results to two separate sheets:
+      Clears existing data if the sheet exists.
+      Creates new sheets if necessary.
+      Adds column headers and writes rows in bulk.
