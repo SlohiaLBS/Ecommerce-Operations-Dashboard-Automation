@@ -1,0 +1,110 @@
+#Dashboard Sheet 
+
+function clear(){
+  // Display a modal dialog box with custom HtmlService content and script
+  SpreadsheetApp.flush()
+  var output = HtmlService.createHtmlOutput('<b>Please wait (THE BOX WILL CLOSE AUTOMATICALLY)..</b>');
+  SpreadsheetApp.getUi().showModalDialog(output, 'Executing Code (DONT CLOSE OR CANCEL)...');
+
+    var targetsheet = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("Label Print Data Puller");
+    targetsheet.getRange("A2:D").clear();
+    var targetsheet2 = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("Auto Fetch Project");
+    targetsheet2.getRange("J2:J").clear();
+    var mainsheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main");
+    mainsheet.getRange("R4:R").clearContent();
+  
+  var output = HtmlService.createHtmlOutput('<script>google.script.host.close();</script>');
+  SpreadsheetApp.getUi().showModalDialog(output, 'Executed...');
+}
+
+function print(){
+  SpreadsheetApp.flush()
+  // Display a modal dialog box with custom HtmlService content and script
+  var output = HtmlService.createHtmlOutput('<b>Please wait (THE BOX WILL CLOSE AUTOMATICALLY)..</b>');
+  SpreadsheetApp.getUi().showModalDialog(output, 'Executing Code (DONT CLOSE OR CANCEL)...');
+
+    var targetsht = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("Label Print Data Puller");
+    targetsht.getRange("A2:D").clear();
+    var mainsht = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Main");
+    var lastrw2 = mainsht.getLastRow();
+    var lastrw = 1;
+    var exp = mainsht.createTextFinder("PRINTT").findAll();
+    for(i=0;i<exp.length;i++){
+      var rownum = exp[i].getRow()
+      mainsht.getRange(rownum,17).setValue(new Date());
+      var datadum = mainsht.getRange(rownum,6,1,4).getValues();
+      targetsht.getRange(lastrw+1+i,1,1,4).setValues(datadum);
+    }
+
+
+#MRP Sheet
+
+function print() {
+  SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("MRP CATCHER Ver 2").clearContents();
+  SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("MRP CATCHER").getRange("A1:H1000").copyTo(SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("MRP CATCHER Ver 2").getRange("A1:H1000"),{contentsOnly:true});
+  var importsheet = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1PFFClNO-ACA65ZYvPpORmE5_VhPyckNZ6z2MGAAN6CM/edit#gid=1046624242").getSheetByName("MRP CATCHER Ver 2")
+  var targetsheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("MRP COPIER");
+  var datalstrow = importsheet.getLastRow();
+  var data = importsheet.getRange("A2:F").getValues();
+  targetsheet.getRange("A2:F").clearContent();
+  targetsheet.getRange("A2:F").setValues(data);
+}
+
+
+async function myFunction() {
+  SpreadsheetApp.flush()
+  var originsht = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("LABELS TAG DATA");
+  originsht.getRange("A1:I1").setBackground("red");
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Please Read Automation & Backend");
+  var test = sheet.getRange("K1").getValue()
+  var filename = sheet.getRange("L3").getValue();
+  if(test == "SUCCESS")
+  {
+    var oldfile = DriveApp.getFileById(sheet.getRange("J1").getValue()).setTrashed(true);
+  }
+  // Retrieve PDF data.
+  const ids = [];
+  for(i = 0; i < sheet.getRange("H1").getValue(); i++){
+    ids.push(sheet.getRange(i+2,7).getValue());
+  }
+  const data = ids.map((id) => new Uint8Array(DriveApp.getFileById(id).getBlob().getBytes()));
+
+  // Merge PDFs.
+  const cdnjs = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
+  eval(UrlFetchApp.fetch(cdnjs).getContentText()); // Load pdf-lib
+  const setTimeout = function(f, t) {
+    Utilities.sleep(t);
+    return f();
+  }
+  const pdfDoc = await PDFLib.PDFDocument.create();
+  for (let i = 0; i < data.length; i++) {
+    const pdfData = await PDFLib.PDFDocument.load(data[i]);
+    const pages = await pdfDoc.copyPages(pdfData, [...Array(pdfData.getPageCount())].map((_, i) => i));
+    pages.forEach(page => pdfDoc.addPage(page));
+  }
+  const bytes = await pdfDoc.save();
+
+  // Create a PDF file.
+  var pdf = DriveApp.createFile(Utilities.newBlob([...new Int8Array(bytes)], MimeType.PDF, filename));
+  var url = pdf.getUrl();
+  sheet.getRange("I1").setValue(url);
+  sheet.getRange("I2").setValue(filename);
+  sheet.getRange("K1").setValue("SUCCESS");
+  Utilities.sleep(7000);
+  DriveApp.getFileById(sheet.getRange("J1").getValue()).setSharing(DriveApp.Access.ANYONE, DriveApp.Permission.EDIT);
+  originsht.getRange("A1:I1").setBackground("white");
+}
+
+function submitToForm() {
+  var formId = '1_6hgmGv_EgaLZCEHjC8zBzrQb735XbfqvJ-p8K3TbOo'; // Replace with the Form ID of your Google Form
+  var form = FormApp.openById(formId);
+  var formResponse = form.createResponse();
+  
+  var items = form.getItems();
+  var item = items[0]; // Assumes the input field is the first item in the form, adjust accordingly
+  
+  var response = item.asTextItem().createResponse("submit");
+  formResponse.withItemResponse(response);
+  formResponse.submit();
+}
+
