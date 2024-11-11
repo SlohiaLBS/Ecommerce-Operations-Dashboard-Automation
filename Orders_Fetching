@@ -1,0 +1,148 @@
+function setScriptProperties() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  scriptProperties.setProperty('REFRESH_TOKEN', 'APP/USER_REFRESH TOKEN');
+  scriptProperties.setProperty('LWA_APP_ID', 'APP_ID');
+  scriptProperties.setProperty('LWA_CLIENT_SECRET', 'LWA_CLIENT_SECRET');
+}
+
+function getAccessToken() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const refreshToken = scriptProperties.getProperty('REFRESH_TOKEN');
+  const clientId = scriptProperties.getProperty('LWA_APP_ID');
+  const clientSecret = scriptProperties.getProperty('LWA_CLIENT_SECRET');
+  
+  const tokenResponse = UrlFetchApp.fetch('https://api.amazon.com/auth/o2/token', {
+    method: 'POST',
+    payload: {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret
+    },
+    muteHttpExceptions: true
+  });
+
+  const tokenData = JSON.parse(tokenResponse.getContentText());
+  if (tokenResponse.getResponseCode() !== 200) {
+    console.error('Error fetching access token:', tokenData);
+    throw new Error('Failed to fetch access token');
+  }
+
+  return tokenData.access_token;
+}
+
+function makeRequestWithRetries(url, headers) {
+  const MAX_RETRIES = 5;
+  let retryCount = 0;
+  let waitTime = 1000;
+
+  while (retryCount < MAX_RETRIES) {
+    const response = UrlFetchApp.fetch(url, { headers: headers, muteHttpExceptions: true });
+    const responseCode = response.getResponseCode();
+    
+    if (responseCode === 200) {
+      return JSON.parse(response.getContentText());
+    } else if (responseCode === 429 || responseCode === 503) {
+      console.log(`Quota exceeded or service unavailable. Retrying in ${waitTime} ms...`);
+      Utilities.sleep(waitTime);
+      retryCount++;
+      waitTime *= 2;
+    } else {
+      console.error('Error making request:', response.getContentText());
+      throw new Error('Request failed');
+    }
+  }
+  throw new Error('Max retries reached');
+}
+
+function fetchOrders() {
+  const accessToken = getAccessToken();
+  const backendSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Backend');
+  const lastRunTime = backendSheet.getRange('B1').getValue();
+  const rlrt = new Date(lastRunTime).setHours(new Date(lastRunTime).getHours() - 1);
+
+  const createdAfterUrl = 'https://sellingpartnerapi-eu.amazon.com/orders/v0/orders?MarketplaceIds=A21TJRUUN4KGV&CreatedAfter=' + new Date(rlrt).toISOString();
+  const headers = {
+    "Authorization": "Bearer " + accessToken,
+    "x-amz-access-token": accessToken,
+    "Content-Type": "application/json"
+  };
+
+  const createdAfterOrders = makeRequestWithRetries(createdAfterUrl, headers);
+
+  const lastUpdatedAfterUrl = 'https://sellingpartnerapi-eu.amazon.com/orders/v0/orders?MarketplaceIds=A21TJRUUN4KGV&LastUpdatedAfter=' + new Date(rlrt).toISOString();
+  const lastUpdatedAfterOrders = makeRequestWithRetries(lastUpdatedAfterUrl, headers);
+
+  const ordersMap = new Map();
+
+  createdAfterOrders.payload.Orders.forEach(order => {
+    ordersMap.set(order.AmazonOrderId, order);
+  });
+
+  lastUpdatedAfterOrders.payload.Orders.forEach(order => {
+    ordersMap.set(order.AmazonOrderId, order);
+  });
+
+  const uniqueOrders = Array.from(ordersMap.values());
+
+  return { payload: { Orders: uniqueOrders } };
+}
+
+function fetchOrderItems(orderId) {
+  const accessToken = getAccessToken();
+  const url = `https://sellingpartnerapi-eu.amazon.com/orders/v0/orders/${orderId}/orderItems`;
+  const headers = {
+    "Authorization": "Bearer " + accessToken,
+    "x-amz-access-token": accessToken,
+    "Content-Type": "application/json"
+  };
+
+  return makeRequestWithRetries(url, headers);
+}
+
+function appendOrdersToSheet() {
+  const ordersResponse = fetchOrders();
+  const orders = ordersResponse.payload.Orders;
+  const sheetName = 'Orders Confirmed';
+  let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
+  }
+
+  const header = ["AmazonOrderId", "PurchaseDate", "OrderStatus", "OrderTotal", "PaymentMethod", "FulfillmentChannel", "SellerSKU", "QuantityOrdered", "FulfillmentInstruction", "LatestShipDate"];
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(header);
+  }
+
+  orders.forEach(order => {
+    const orderId = order.AmazonOrderId;
+    const orderItemsResponse = fetchOrderItems(orderId);
+    const orderItems = orderItemsResponse.payload.OrderItems;
+
+    orderItems.forEach(item => {
+      const row = [
+        orderId,
+        order.PurchaseDate,
+        order.OrderStatus,
+        order.OrderTotal ? order.OrderTotal.Amount : '',
+        order.PaymentMethod,
+        order.FulfillmentChannel,
+        item.SellerSKU || '',
+        item.QuantityOrdered || '',
+        item.FulfillmentInstruction || '',
+        order.LatestShipDate || ''
+      ];
+      sheet.appendRow(row);
+    });
+  });
+
+  const backendSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Backend');
+  backendSheet.getRange('B1').setValue(new Date().toISOString());
+}
+
+function main() {
+  setScriptProperties();
+  appendOrdersToSheet();
+}
