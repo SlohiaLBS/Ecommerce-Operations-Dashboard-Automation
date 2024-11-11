@@ -1,0 +1,98 @@
+function runBigQuery() {
+  var projectId = 'neodriftdatabackend'; // Your Google Cloud Project ID
+
+  // Define the two queries
+  var query1 = `
+    SELECT 
+      string_field_5,
+      SUM(CAST(string_field_8 AS INT64)) AS total_sum,
+      string_field_10,
+      string_field_20
+    FROM 
+      \`neodriftdatabackend.NeodriftDataBackend.NDB\`
+    WHERE 
+      (string_field_20 = "DISPATCHEDD")
+      OR
+      (string_field_20 = "RETURN COMPLETEDD" AND string_field_10 = "OK")
+    GROUP BY 
+      string_field_5,
+      string_field_20,
+      string_field_10
+    ORDER BY
+      string_field_5;
+  `;
+
+  var query2 = `
+    SELECT 
+      string_field_1, 
+      SUM(CAST(string_field_2 AS INT64)) as total,
+      string_field_4
+    FROM
+      \`neodriftdatabackend.NeodriftDataBackend.ProductionData\`
+    WHERE
+      string_field_4 = "COMPLETEDD"
+      OR string_field_4 = "REPAIR - STITCH COMPLETED"
+    GROUP BY
+      string_field_1,
+      string_field_4;
+  `;
+
+  // Run both queries and write results to separate sheets
+  runAndPasteQueryResults(projectId, query1, 'Dispatched/Returns Data Query');
+  runAndPasteQueryResults(projectId, query2, 'Production Data Query');
+}
+
+function runAndPasteQueryResults(projectId, query, sheetName) {
+  // Set up the BigQuery job configuration
+  var request = {
+    configuration: {
+      query: {
+        query: query,
+        useLegacySql: false // Use Standard SQL syntax
+      }
+    }
+  };
+
+  // Submit the BigQuery job
+  var queryResponse = BigQuery.Jobs.insert(request, projectId);
+  var jobId = queryResponse.jobReference.jobId;
+
+  // Wait for the query to complete
+  var sleepTime = 10000; // 10 seconds
+  while (true) {
+    Utilities.sleep(sleepTime);
+    var job = BigQuery.Jobs.get(projectId, jobId);
+    if (job.status.state === 'DONE') {
+      if (job.status.errorResult) {
+        throw new Error('Error executing query: ' + job.status.errorResult.message);
+      }
+      break;
+    }
+  }
+
+  // Get the query results
+  var results = BigQuery.Jobs.getQueryResults(projectId, jobId);
+  var rows = results.rows;
+  var schema = results.schema.fields;
+
+  // Access or create the target sheet
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
+  } else {
+    sheet.clear(); // Optional: clear existing content
+  }
+
+  // Prepare headers
+  var headers = schema.map(function(field) { return field.name; });
+
+  // Prepare values
+  var values = rows.map(function(row) {
+    return row.f.map(function(cell) { return cell.v; });
+  });
+
+  // Write headers and values to the sheet in one operation
+  var range = sheet.getRange(1, 1, values.length + 1, headers.length);
+  var data = [headers].concat(values);
+  range.setValues(data);
+}
